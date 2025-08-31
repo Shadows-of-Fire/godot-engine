@@ -50,6 +50,7 @@
 			<param index="4" name="icon" type="Resource" default="null" />
 			<param index="5" name="value" type="Variant" default="null" />
 			<param index="6" name="location" type="int" default="1024" />
+			<param index="7" name="on_applied" type="Callable" default="Callable()" />
 			<description>
 				Submits an item to the queue of potential candidates for the autocomplete menu. Call [method update_code_completion_options] to update the list.
 				[param location] indicates location of the option relative to the location of the code completion query. See [enum CodeEdit.CodeCompletionLocation] for how to set this value.

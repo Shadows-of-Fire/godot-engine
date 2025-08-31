@@ -52,6 +52,7 @@
 #include "editor/editor_string_names.h"
 #include "editor/file_system/editor_file_system.h"
 #include "editor/settings/editor_settings.h"
+#include "scene/gui/code_edit.h"
 #endif
 
 Vector<String> GDScriptLanguage::get_comment_delimiters() const {
@@ -3443,6 +3444,55 @@ static void _find_call_arguments(GDScriptParser::CompletionContext &p_context, c
 	r_forced = r_result.size() > 0;
 }
 
+namespace {
+
+/**
+ * @brief Used as the `on_applied` callback for GDScript completions of category `COMPLETION_OVERRIDE_METHOD`.
+ *        This method will attempt to automatically apply the `@override` annotation when using completion to generate an override.
+ *        If the `@override` annotation is already present, nothing will occur.
+ *
+ * @param code_edit The code editor instance.
+ * @param caret     The caret that was used for this application of the completion.
+ */
+void _update_overrides_after_completion(CodeEdit *code_edit, int caret) {
+	int line = code_edit->get_caret_line(caret);
+	// Backtrack in the current line and upwards a few lines to search for `@override`. If we don't see it, apply it inline before the `func` keyword.
+	bool has_override_annot = false;
+	int lines_traversed = 0;
+	int func_line = -1; // Generally speaking we expect the line with `func` to be the current line, but for sanity we'll search for it anyway.
+
+	while (!has_override_annot && lines_traversed < 10 && line >= 0) {
+		String text = code_edit->get_line(line);
+
+		if (text.contains("func")) {
+			if (func_line == -1) {
+				func_line = line;
+			} else {
+				break; // We've hit another `func` decl. Anything in or above this line doesn't apply to this function anymore.
+			}
+		}
+
+		if (text.contains("@override")) {
+			has_override_annot = true;
+			break;
+		}
+
+		line--;
+		lines_traversed++;
+	}
+
+	// TODO: Review stage - I'd prefer to insert the `@override` on the line before `func`, but I'm not sure how to do that.
+	if (!has_override_annot && func_line != -1) {
+		String text = code_edit->get_line(func_line);
+		code_edit->set_line(func_line, "@override " + text);
+		int caret_col = code_edit->get_caret_column(caret);
+		code_edit->set_caret_line(func_line, true, true, 0, caret);
+		code_edit->set_caret_column(caret_col + strlen("@override "), false, caret);
+	}
+}
+
+} // namespace
+
 ::Error GDScriptLanguage::complete_code(const String &p_code, const String &p_path, Object *p_owner, List<ScriptLanguage::CodeCompletionOption> *r_options, bool &r_forced, String &r_call_hint) {
 	const String quote_style = EDITOR_GET("text_editor/completion/use_single_quotes") ? "'" : "\"";
 
@@ -3704,6 +3754,10 @@ static void _find_call_arguments(GDScriptParser::CompletionContext &p_context, c
 							String display_name = member.function->identifier->name;
 							display_name += member.function->signature + ":";
 							ScriptLanguage::CodeCompletionOption option(display_name, ScriptLanguage::CODE_COMPLETION_KIND_FUNCTION);
+
+							// When inserting a completion for a function override, we want to automatically add the @override annotation to the completion.
+							option.on_applied = callable_mp_static(_update_overrides_after_completion);
+
 							options.insert(member.function->identifier->name, option); // Insert name instead of display to track duplicates.
 						}
 						native_type = native_type.class_type->base_type;
@@ -3778,6 +3832,10 @@ static void _find_call_arguments(GDScriptParser::CompletionContext &p_context, c
 				method_hint += ":";
 
 				ScriptLanguage::CodeCompletionOption option(method_hint, ScriptLanguage::CODE_COMPLETION_KIND_FUNCTION);
+
+				// When inserting a completion for a function override, we want to automatically add the @override annotation to the completion.
+				option.on_applied = callable_mp_static(_update_overrides_after_completion);
+
 				options.insert(option.display, option);
 			}
 		} break;

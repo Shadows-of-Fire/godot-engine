@@ -318,6 +318,13 @@ public:
 		int location = LOCATION_OTHER;
 		String theme_color_name;
 
+		/**
+		 * @brief A callback that is executed after this completion option is applied by the code editor (in confirm_code_completion).
+		 *        This callback receives both the CodeEdit instance and the current caret that was used for the application.
+		 *        For multi-line applications, this callback may be invoked multiple times with different caret values.
+		 */
+		Callable on_applied;
+
 		CodeCompletionOption() {}
 
 		CodeCompletionOption(const String &p_text, CodeCompletionKind p_kind, int p_location = LOCATION_OTHER, const String &p_theme_color_name = "") {
